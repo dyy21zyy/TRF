@@ -1,0 +1,30 @@
+{
+  "solver": {
+    "name": "Gurobi",
+    "version": "11.0",
+    "parameters": {
+      "NonConvex": 2,
+      "MIPGap": 0.01,
+      "TimeLimit":  3600,
+      "Threads": 16,
+      "Presolve": 2,
+      "MIPFocus":  1,
+      "NumericFocus": 1,
+      "OutputFlag": 1
+    }
+  },
+  "algorithm": {
+    "epsilon_grid_size": 20,
+    "warm_start": true
+  },
+  "problem": {
+    "num_nodes": 10,
+    "num_actions":  5,
+    "num_scenarios": 3,
+    "states": ["L", "M", "H"]
+  },
+  "paths": {
+    "parameters": "data/parameters.json",
+    "results": "results/"
+  }
+}
