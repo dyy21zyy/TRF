@@ -578,7 +578,7 @@ def _plot_pareto_scatter(all_df: pd.DataFrame, pareto_df: pd.DataFrame, save_pat
     plt.grid(alpha=0.3)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(save_path, dpi=180)
+    plt.savefig(save_path, dpi=300)
     plt.close()
 
 
@@ -595,7 +595,75 @@ def _plot_rank_correlation(ref_df: pd.DataFrame, alt_df: pd.DataFrame, save_path
     plt.title(title)
     plt.grid(alpha=0.3)
     plt.tight_layout()
-    plt.savefig(save_path, dpi=180)
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+
+
+def plot_efficacy_decay_frontiers(frontier_df: pd.DataFrame, save_path: str) -> None:
+    """Publication-style frontier comparison for Section 6.4.1 (efficacy decay)."""
+    plt.figure(figsize=(8, 5))
+    styles = [
+        ("o", "-"),
+        ("s", "--"),
+        ("^", "-."),
+        ("D", ":"),
+    ]
+    for i, alpha in enumerate(sorted(frontier_df["alpha_decay"].unique())):
+        tmp = frontier_df[frontier_df["alpha_decay"] == alpha].sort_values("Z1_cost")
+        marker, ls = styles[i % len(styles)]
+        plt.plot(tmp["Z1_cost"], tmp["Z2_worst_risk"], marker=marker, linestyle=ls, label=f"alpha={alpha:.2f}")
+    plt.xlabel("Implementation cost Z1")
+    plt.ylabel("Worst-case risk Z2")
+    plt.title("Section 6.4.1 Efficacy Decay: Pareto Frontier Shift")
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+
+
+def plot_conservatism_frontiers(frontier_df: pd.DataFrame, save_path: str) -> None:
+    """Publication-style frontier comparison for Section 6.4.2 (psychological conservatism)."""
+    plt.figure(figsize=(8, 5))
+    styles = [
+        ("o", "-"),
+        ("s", "--"),
+        ("^", "-."),
+        ("D", ":"),
+    ]
+    for i, dps in enumerate(sorted(frontier_df["delta_psych"].unique())):
+        tmp = frontier_df[frontier_df["delta_psych"] == dps].sort_values("Z1_cost")
+        marker, ls = styles[i % len(styles)]
+        plt.plot(tmp["Z1_cost"], tmp["Z2_worst_risk"], marker=marker, linestyle=ls, label=f"delta_psych={dps:.2f}")
+    plt.xlabel("Implementation cost Z1")
+    plt.ylabel("Worst-case risk Z2")
+    plt.title("Section 6.4.2 Conservatism Level: Price of Robustness")
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+
+
+def plot_stress_multiplier_frontiers(frontier_df: pd.DataFrame, save_path: str) -> None:
+    """Publication-style frontier comparison for Section 6.4.3 (stress multipliers)."""
+    plt.figure(figsize=(8, 5))
+    styles = [
+        ("o", "-"),
+        ("s", "--"),
+        ("^", "-."),
+    ]
+    for i, lam in enumerate(sorted(frontier_df["lambda_stress"].unique())):
+        tmp = frontier_df[frontier_df["lambda_stress"] == lam].sort_values("Z1_cost")
+        marker, ls = styles[i % len(styles)]
+        plt.plot(tmp["Z1_cost"], tmp["Z2_worst_risk"], marker=marker, linestyle=ls, label=f"lambda={lam:.2f}")
+    plt.xlabel("Implementation cost Z1")
+    plt.ylabel("Worst-case risk Z2")
+    plt.title("Section 6.4.3 Stress Multiplier: Safety Degradation")
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300)
     plt.close()
 
 
@@ -758,58 +826,118 @@ def run_parameter_hierarchy_sensitivity(params: ParameterBundle, out_dir: str) -
 
 
 def run_efficacy_decay_sensitivity(params: ParameterBundle, out_dir: str) -> pd.DataFrame:
-    section_dir = os.path.join(out_dir, "sec_6_4_efficacy_decay")
-    _ensure_dir(section_dir)
+    tables_dir = os.path.join(out_dir, "outputs", "tables")
+    figures_dir = os.path.join(out_dir, "outputs", "figures")
+    _ensure_dir(tables_dir)
+    _ensure_dir(figures_dir)
 
-    decay_levels = [1.0, 0.8, 0.6]
+    # Required levels for Section 6.4.1
+    alpha_levels = [0.0, 0.1, 0.2, 0.3]
     rows = []
-    for d in decay_levels:
+    frontier_rows = []
+    for alpha in alpha_levels:
+        # Gamma_tilde = Gamma * (1 - alpha)
+        scale = 1.0 - alpha
         p = replace(params)
-        p.gamma_root = {k: d * v for k, v in params.gamma_root.items()}
-        p.gamma_child = {ak: {spa: d * gv for spa, gv in gmap.items()} for ak, gmap in params.gamma_child.items()}
+        p.gamma_root = {k: scale * v for k, v in params.gamma_root.items()}
+        p.gamma_child = {ak: {spa: scale * gv for spa, gv in gmap.items()} for ak, gmap in params.gamma_child.items()}
 
         all_df = evaluate_all_portfolios(p)
         pareto = compute_pareto_frontier(all_df)
-        all_df.to_csv(os.path.join(section_dir, f"all_decay_{d:.2f}.csv"), index=False)
-        pareto.to_csv(os.path.join(section_dir, f"pareto_decay_{d:.2f}.csv"), index=False)
+        pareto = pareto.copy()
+        pareto["alpha_decay"] = alpha
+        frontier_rows.append(pareto)
+
+        all_df.to_csv(os.path.join(tables_dir, f"sec_6_4_1_all_alpha_{alpha:.2f}.csv"), index=False)
         best = all_df.sort_values(["Z2_worst_risk", "Z1_cost"]).iloc[0]
-        rows.append({"decay": d, "best_portfolio": best["portfolio"], "best_Z2": best["Z2_worst_risk"], "pareto_size": len(pareto)})
+        rows.append(
+            {
+                "alpha_decay": alpha,
+                "best_portfolio": best["portfolio"],
+                "best_Z2": best["Z2_worst_risk"],
+                "best_Z1": best["Z1_cost"],
+                "pareto_size": len(pareto),
+            }
+        )
+
+    frontier_df = pd.concat(frontier_rows, ignore_index=True)
+    frontier_df.to_csv(os.path.join(tables_dir, "sec_6_4_1_efficacy_decay_frontiers.csv"), index=False)
+
+    plot_efficacy_decay_frontiers(
+        frontier_df=frontier_df,
+        save_path=os.path.join(figures_dir, "sec_6_4_1_efficacy_decay.png"),
+    )
 
     summary = pd.DataFrame(rows)
-    summary.to_csv(os.path.join(section_dir, "efficacy_decay_summary.csv"), index=False)
+    summary.to_csv(os.path.join(tables_dir, "sec_6_4_1_efficacy_decay_summary.csv"), index=False)
     return summary
 
 
 def run_conservatism_sensitivity(params: ParameterBundle, out_dir: str) -> pd.DataFrame:
-    section_dir = os.path.join(out_dir, "sec_6_4_conservatism")
-    _ensure_dir(section_dir)
+    tables_dir = os.path.join(out_dir, "outputs", "tables")
+    figures_dir = os.path.join(out_dir, "outputs", "figures")
+    _ensure_dir(tables_dir)
+    _ensure_dir(figures_dir)
 
-    levels = [0.5, 1.0, 1.5]
+    # Required settings for psychological nodes N5,N6,N7 only
+    delta_psych_levels = [0.00, 0.05, 0.08, 0.12]
     rows = []
-    for c in levels:
+    frontier_rows = []
+    for dps in delta_psych_levels:
         p = replace(params)
-        p.delta_H_root = {n: c * d for n, d in params.delta_H_root.items()}
-        p.delta_H_child = {n: {spa: c * d for spa, d in dm.items()} for n, dm in params.delta_H_child.items()}
+        p.delta_H_root = dict(params.delta_H_root)
+        p.delta_H_child = {n: {spa: d for spa, d in dm.items()} for n, dm in params.delta_H_child.items()}
+        for n in PSYCH_NODES:
+            for spa in p.delta_H_child[n]:
+                p.delta_H_child[n][spa] = dps
 
         all_df = evaluate_all_portfolios(p)
         pareto = compute_pareto_frontier(all_df)
-        all_df.to_csv(os.path.join(section_dir, f"all_cons_{c:.2f}.csv"), index=False)
-        pareto.to_csv(os.path.join(section_dir, f"pareto_cons_{c:.2f}.csv"), index=False)
+        pareto = pareto.copy()
+        pareto["delta_psych"] = dps
+        frontier_rows.append(pareto)
+
+        all_df.to_csv(os.path.join(tables_dir, f"sec_6_4_2_all_delta_psych_{dps:.2f}.csv"), index=False)
         best = all_df.sort_values(["Z2_worst_risk", "Z1_cost"]).iloc[0]
-        rows.append({"conservatism_multiplier": c, "best_portfolio": best["portfolio"], "best_Z2": best["Z2_worst_risk"], "pareto_size": len(pareto)})
+        rows.append(
+            {
+                "delta_psych": dps,
+                "best_portfolio": best["portfolio"],
+                "best_Z2": best["Z2_worst_risk"],
+                "best_Z1": best["Z1_cost"],
+                "pareto_size": len(pareto),
+            }
+        )
+
+    frontier_df = pd.concat(frontier_rows, ignore_index=True)
+    frontier_df.to_csv(os.path.join(tables_dir, "sec_6_4_2_conservatism_frontiers.csv"), index=False)
+    plot_conservatism_frontiers(
+        frontier_df=frontier_df,
+        save_path=os.path.join(figures_dir, "sec_6_4_2_conservatism_level.png"),
+    )
 
     summary = pd.DataFrame(rows)
-    summary.to_csv(os.path.join(section_dir, "conservatism_summary.csv"), index=False)
+    summary.to_csv(os.path.join(tables_dir, "sec_6_4_2_conservatism_summary.csv"), index=False)
     return summary
 
 
 def run_stress_multiplier_sensitivity(params: ParameterBundle, out_dir: str) -> pd.DataFrame:
-    section_dir = os.path.join(out_dir, "sec_6_4_stress_multiplier")
-    _ensure_dir(section_dir)
+    tables_dir = os.path.join(out_dir, "outputs", "tables")
+    figures_dir = os.path.join(out_dir, "outputs", "figures")
+    _ensure_dir(tables_dir)
+    _ensure_dir(figures_dir)
 
-    levels = [0.8, 1.0, 1.2]
+    # Required settings for Section 6.4.3
+    lambda_levels = [1.0, 1.25, 1.5]
     rows = []
-    for m in levels:
+    frontier_rows = []
+    eps_rows = []
+
+    epsilon_min = 0.0
+    epsilon_max = sum(params.costs.values())
+    eps_points = 21
+
+    for lam in lambda_levels:
         p = replace(params)
         p.theta_root = {om: {n: dict(v) for n, v in nd.items()} for om, nd in params.theta_root.items()}
         p.theta_child = {
@@ -817,27 +945,70 @@ def run_stress_multiplier_sensitivity(params: ParameterBundle, out_dir: str) -> 
             for om, omd in params.theta_child.items()
         }
 
-        # multiply non-zero shock terms only
-        for om in SCENARIOS:
+        # lambda scales scenario shocks only in stress-testing scenarios (omega2, omega3).
+        # Baseline scenario omega1 is kept unchanged.
+        for om in ("omega2", "omega3"):
             for n in ROOT_NODES:
                 for s in ("H", "M"):
-                    if abs(p.theta_root[om][n][s]) > 0:
-                        p.theta_root[om][n][s] *= m
+                    p.theta_root[om][n][s] *= lam
             for n in CHILD_NODES:
                 for spa in p.theta_child[om][n]:
                     for s in ("H", "M"):
-                        if abs(p.theta_child[om][n][spa][s]) > 0:
-                            p.theta_child[om][n][spa][s] *= m
+                        p.theta_child[om][n][spa][s] *= lam
 
         all_df = evaluate_all_portfolios(p)
         pareto = compute_pareto_frontier(all_df)
-        all_df.to_csv(os.path.join(section_dir, f"all_stress_{m:.2f}.csv"), index=False)
-        pareto.to_csv(os.path.join(section_dir, f"pareto_stress_{m:.2f}.csv"), index=False)
+        pareto = pareto.copy()
+        pareto["lambda_stress"] = lam
+        frontier_rows.append(pareto)
+
+        eps_df = solve_epsilon_constraint_grid(
+            all_portfolios_df=all_df,
+            epsilon_grid_points=eps_points,
+            epsilon_min=epsilon_min,
+            epsilon_max=epsilon_max,
+        ).copy()
+        eps_df["lambda_stress"] = lam
+        eps_rows.append(eps_df)
+
+        all_df.to_csv(os.path.join(tables_dir, f"sec_6_4_3_all_lambda_{lam:.2f}.csv"), index=False)
         best = all_df.sort_values(["Z2_worst_risk", "Z1_cost"]).iloc[0]
-        rows.append({"stress_multiplier": m, "best_portfolio": best["portfolio"], "best_Z2": best["Z2_worst_risk"], "pareto_size": len(pareto)})
+        rows.append(
+            {
+                "lambda_stress": lam,
+                "best_portfolio": best["portfolio"],
+                "best_Z2": best["Z2_worst_risk"],
+                "best_Z1": best["Z1_cost"],
+                "pareto_size": len(pareto),
+            }
+        )
+
+    frontier_df = pd.concat(frontier_rows, ignore_index=True)
+    frontier_df.to_csv(os.path.join(tables_dir, "sec_6_4_3_stress_multiplier_frontiers.csv"), index=False)
+    plot_stress_multiplier_frontiers(
+        frontier_df=frontier_df,
+        save_path=os.path.join(figures_dir, "sec_6_4_3_stress_multiplier.png"),
+    )
+
+    # Required degradation summary at same budget levels from epsilon-grid portfolios.
+    eps_all = pd.concat(eps_rows, ignore_index=True)
+    eps_all.to_csv(os.path.join(tables_dir, "sec_6_4_3_stress_multiplier_epsilon_grid.csv"), index=False)
+
+    base = eps_all[eps_all["lambda_stress"] == 1.0][["epsilon", "Z2_worst_risk"]].rename(
+        columns={"Z2_worst_risk": "Z2_baseline_lambda1"}
+    )
+    summary_grid = eps_all.merge(base, on="epsilon", how="left")
+    summary_grid["degradation_vs_lambda1"] = summary_grid["Z2_worst_risk"] - summary_grid["Z2_baseline_lambda1"]
+    summary_grid["active_strategies"] = summary_grid["portfolio"].apply(
+        lambda pid: ",".join([a for a, bit in zip(ACTION_ORDER, pid) if bit == "1"]) if "1" in pid else "None"
+    )
+    summary_grid = summary_grid[
+        ["lambda_stress", "epsilon", "Z1_cost", "active_strategies", "Z2_worst_risk", "degradation_vs_lambda1", "portfolio"]
+    ].sort_values(["lambda_stress", "epsilon"])
+    summary_grid.to_csv(os.path.join(tables_dir, "sec_6_4_3_stress_degradation_summary.csv"), index=False)
 
     summary = pd.DataFrame(rows)
-    summary.to_csv(os.path.join(section_dir, "stress_multiplier_summary.csv"), index=False)
+    summary.to_csv(os.path.join(tables_dir, "sec_6_4_3_stress_multiplier_summary.csv"), index=False)
     return summary
 
 
@@ -877,6 +1048,14 @@ def main(output_dir: str = "results_paper") -> None:
 
     print("Completed all experiments.")
     print(f"Outputs saved to: {output_dir}")
+    tables_dir = os.path.join(output_dir, "outputs", "tables")
+    figures_dir = os.path.join(output_dir, "outputs", "figures")
+    print(f"CSV result files saved to: {tables_dir}")
+    print(f"Section 6.4 figures saved to: {figures_dir}")
+    print("Generated Section 6.4 plot files:")
+    print(" - sec_6_4_1_efficacy_decay.png")
+    print(" - sec_6_4_2_conservatism_level.png")
+    print(" - sec_6_4_3_stress_multiplier.png")
 
 
 if __name__ == "__main__":
